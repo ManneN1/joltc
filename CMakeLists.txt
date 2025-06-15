@@ -54,7 +54,7 @@ option(GENERATE_DEBUG_SYMBOLS "Generate debug symbols" OFF)
 option(OVERRIDE_CXX_FLAGS "Override CMAKE_CXX_FLAGS_DEBUG/RELEASE" ON)
 
 # When turning this option on, the library will be compiled in such a way to attempt to keep the simulation deterministic across platforms
-option(CROSS_PLATFORM_DETERMINISTIC "Cross platform deterministic" OFF)
+option(CROSS_PLATFORM_DETERMINISTIC "Cross platform deterministic" ON)
 
 # When turning this option on, the library will be compiled for ARM (aarch64-linux-gnu), requires compiling with clang
 option(CROSS_COMPILE_ARM "Cross compile to aarch64-linux-gnu" OFF)

@@ -72,6 +72,7 @@ JPH_SUPPRESS_WARNINGS
 #include "Jolt/Physics/Ragdoll/Ragdoll.h"
 #include "Jolt/Physics/Vehicle/VehicleController.h"
 #include "Jolt/Physics/Vehicle/WheeledVehicleController.h"
+#include "Jolt/Physics/StateRecorder.h"
 
 #include <iostream>
 #include <cstdarg>
@@ -157,6 +158,8 @@ DEF_MAP_DECL(VehicleController, JPH_VehicleController)
 DEF_MAP_DECL(WheeledVehicleControllerSettings, JPH_WheeledVehicleControllerSettings)
 DEF_MAP_DECL(WheeledVehicleController, JPH_WheeledVehicleController)
 DEF_MAP_DECL(VehicleConstraint, JPH_VehicleConstraint)
+DEF_MAP_DECL(StateRecorderFilter, JPH_StateRecorderFilter)
+DEF_MAP_DECL(StateRecorder, JPH_StateRecorder)
 
 // Callback for traces, connect this to your own trace function if you have one
 static JPH_TraceFunc s_TraceFunc = nullptr;
@@ -5192,6 +5195,24 @@ void JPH_PhysicsSystem_DrawConstraintReferenceFrame(JPH_PhysicsSystem* system, J
 }
 #endif
 
+void JPH_PhysicsSystem_SaveState(const JPH_PhysicsSystem* system, JPH_StateRecorder* stream, JPH_StateRecorderState state, const JPH_StateRecorderFilter* filter)
+{
+	JPH_ASSERT(system);
+	JPH_ASSERT(stream);
+
+	const StateRecorderFilter* joltFilter = filter ? reinterpret_cast<const StateRecorderFilter*>(filter) : nullptr;
+	system->physicsSystem->SaveState(*reinterpret_cast<StateRecorder*>(stream), static_cast<EStateRecorderState>(state), joltFilter);
+}
+
+bool JPH_PhysicsSystem_RestoreState(JPH_PhysicsSystem* system, JPH_StateRecorder* stream, const JPH_StateRecorderFilter* filter)
+{
+	JPH_ASSERT(system);
+	JPH_ASSERT(stream);
+
+	const StateRecorderFilter* joltFilter = filter ? reinterpret_cast<const StateRecorderFilter*>(filter) : nullptr;
+	return system->physicsSystem->RestoreState(*reinterpret_cast<StateRecorder*>(stream), joltFilter);
+}
+
 /* PhysicsStepListener */
 class ManagedPhysicsStepListener final : public JPH::PhysicsStepListener
 {
@@ -5239,6 +5260,134 @@ void JPH_PhysicsStepListener_Destroy(JPH_PhysicsStepListener* listener)
 	{
 		delete reinterpret_cast<ManagedPhysicsStepListener*>(listener);
 	}
+}
+
+/* StateRecorderFilter */
+class ManagedStateRecorderFilter final : public JPH::StateRecorderFilter
+{
+public:
+        static const JPH_StateRecorderFilter_Procs* s_Procs;
+        void* userData = nullptr;
+
+        ManagedStateRecorderFilter(void* userData_)
+                : userData(userData_)
+        {
+
+        }
+
+        bool ShouldSaveBody(const Body& inBody) const override
+        {
+                if (s_Procs != nullptr && s_Procs->ShouldSaveBody)
+                        return s_Procs->ShouldSaveBody(userData, reinterpret_cast<const JPH_Body*>(&inBody));
+                return true;
+        }
+
+        bool ShouldSaveConstraint(const Constraint& inConstraint) const override
+        {
+                if (s_Procs != nullptr && s_Procs->ShouldSaveConstraint)
+                        return s_Procs->ShouldSaveConstraint(userData, reinterpret_cast<const JPH_Constraint*>(&inConstraint));
+                return true;
+        }
+
+        bool ShouldSaveContact(const BodyID& inBody1, const BodyID& inBody2) const override
+        {
+                if (s_Procs != nullptr && s_Procs->ShouldSaveContact)
+                        return s_Procs->ShouldSaveContact(userData, inBody1.GetIndexAndSequenceNumber(), inBody2.GetIndexAndSequenceNumber());
+                return true;
+        }
+
+        bool ShouldRestoreContact(const BodyID& inBody1, const BodyID& inBody2) const override
+        {
+                if (s_Procs != nullptr && s_Procs->ShouldRestoreContact)
+                        return s_Procs->ShouldRestoreContact(userData, inBody1.GetIndexAndSequenceNumber(), inBody2.GetIndexAndSequenceNumber());
+                return true;
+        }
+};
+
+const JPH_StateRecorderFilter_Procs* ManagedStateRecorderFilter::s_Procs = nullptr;
+
+void JPH_StateRecorderFilter_SetProcs(const JPH_StateRecorderFilter_Procs* procs)
+{
+        ManagedStateRecorderFilter::s_Procs = procs;
+}
+
+JPH_StateRecorderFilter* JPH_StateRecorderFilter_Create(void* userData)
+{
+        auto filter = new ManagedStateRecorderFilter(userData);
+        return reinterpret_cast<JPH_StateRecorderFilter*>(filter);
+}
+
+void JPH_StateRecorderFilter_Destroy(JPH_StateRecorderFilter* filter)
+{
+        if (filter)
+        {
+		delete reinterpret_cast<ManagedStateRecorderFilter*>(filter);
+        }
+}
+
+/* StateRecorder */
+class ManagedStateRecorder final : public JPH::StateRecorder
+{
+public:
+        static const JPH_StateRecorder_Procs* s_Procs;
+        void* userData = nullptr;
+
+        ManagedStateRecorder(void* userData_)
+                : userData(userData_)
+        {
+        }
+
+        void WriteBytes(const void* inData, size_t inNumBytes) override
+        {
+                if (s_Procs != nullptr && s_Procs->WriteBytes)
+                        s_Procs->WriteBytes(userData, inData, inNumBytes);
+        }
+
+        void ReadBytes(void* inData, size_t inNumBytes) override
+        {
+                if (s_Procs != nullptr && s_Procs->ReadBytes)
+                        s_Procs->ReadBytes(userData, inData, inNumBytes);
+        }
+
+        bool IsEOF() const override
+        {
+                if (s_Procs != nullptr && s_Procs->IsEOF)
+                        return s_Procs->IsEOF(userData);
+                return true;
+        }
+
+        bool IsFailed() const override
+        {
+                if (s_Procs != nullptr && s_Procs->IsFailed)
+                        return s_Procs->IsFailed(userData);
+                return false;
+        }
+};
+
+const JPH_StateRecorder_Procs* ManagedStateRecorder::s_Procs = nullptr;
+
+void JPH_StateRecorder_SetProcs(const JPH_StateRecorder_Procs* procs)
+{
+        ManagedStateRecorder::s_Procs = procs;
+}
+
+JPH_StateRecorder* JPH_StateRecorder_Create(void* userData)
+{
+        auto recorder = new ManagedStateRecorder(userData);
+        return reinterpret_cast<JPH_StateRecorder*>(recorder);
+}
+
+void JPH_StateRecorder_Destroy(JPH_StateRecorder* recorder)
+{
+        if (recorder)
+        {
+		delete reinterpret_cast<ManagedStateRecorder*>(recorder);
+        }
+}
+
+bool JPH_StateRecorder_IsEOF(const JPH_StateRecorder* recorder)
+{
+        return reinterpret_cast<const ManagedStateRecorder*>(recorder)->IsEOF();
 }
 
 JPH_Body* JPH_BodyInterface_CreateBody(JPH_BodyInterface* interface, const JPH_BodyCreationSettings* settings)
