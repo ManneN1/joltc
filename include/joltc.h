@@ -136,6 +136,8 @@ typedef struct JPH_ContactSettings						JPH_ContactSettings;
 
 typedef struct JPH_GroupFilter							JPH_GroupFilter;
 typedef struct JPH_GroupFilterTable						JPH_GroupFilterTable;  /* Inherics JPH_GroupFilter */
+typedef struct JPH_StateRecorderFilter						JPH_StateRecorderFilter;
+typedef struct JPH_StateRecorder						JPH_StateRecorder;
 
 /* Enums */
 typedef enum JPH_PhysicsUpdateError {
@@ -431,6 +433,17 @@ typedef enum JPH_TransmissionMode {
     _JPH_TransmissionMode_Count,
     _JPH_TransmissionMode_Force32 = 0x7FFFFFFF
 } JPH_TransmissionMode;
+typedef enum JPH_StateRecorderState {
+    JPH_StateRecorderState_None = 0,
+    JPH_StateRecorderState_Global = 1,
+    JPH_StateRecorderState_Bodies = 2,
+    JPH_StateRecorderState_Contacts = 4,
+    JPH_StateRecorderState_Constraints = 8,
+    JPH_StateRecorderState_All = JPH_StateRecorderState_Global | JPH_StateRecorderState_Bodies | JPH_StateRecorderState_Contacts | JPH_StateRecorderState_Constraints,
+
+    _JPH_StateRecorderState_Count,
+    _JPH_StateRecorderState_Force32 = 0x7FFFFFFF
+} JPH_StateRecorderState;
 
 typedef struct JPH_Vec3 {
 	float x;
@@ -1112,6 +1125,9 @@ JPH_CAPI void JPH_PhysicsSystem_DrawBodies(JPH_PhysicsSystem* system, const JPH_
 JPH_CAPI void JPH_PhysicsSystem_DrawConstraints(JPH_PhysicsSystem* system, JPH_DebugRenderer* renderer);
 JPH_CAPI void JPH_PhysicsSystem_DrawConstraintLimits(JPH_PhysicsSystem* system, JPH_DebugRenderer* renderer);
 JPH_CAPI void JPH_PhysicsSystem_DrawConstraintReferenceFrame(JPH_PhysicsSystem* system, JPH_DebugRenderer* renderer);
+JPH_CAPI void JPH_PhysicsSystem_SaveState(const JPH_PhysicsSystem* system, JPH_StateRecorder* stream, JPH_StateRecorderState state, const JPH_StateRecorderFilter* filter /* = nullptr */);
+JPH_CAPI bool JPH_PhysicsSystem_RestoreState(JPH_PhysicsSystem* system, JPH_StateRecorder* stream, const JPH_StateRecorderFilter* filter /* = nullptr */);
+
 
 /* PhysicsStepListener */
 typedef struct JPH_PhysicsStepListenerContext {
@@ -2187,6 +2203,32 @@ typedef struct JPH_BodyDrawFilter_Procs {
 JPH_CAPI void JPH_BodyDrawFilter_SetProcs(const JPH_BodyDrawFilter_Procs* procs);
 JPH_CAPI JPH_BodyDrawFilter* JPH_BodyDrawFilter_Create(void* userData);
 JPH_CAPI void JPH_BodyDrawFilter_Destroy(JPH_BodyDrawFilter* filter);
+
+
+/* JPH_StateRecorderFilter */
+typedef struct JPH_StateRecorderFilter_Procs {
+    bool(JPH_API_CALL* ShouldSaveBody)(void* userData, const JPH_Body* body);
+    bool(JPH_API_CALL* ShouldSaveConstraint)(void* userData, const JPH_Constraint* constraint);
+    bool(JPH_API_CALL* ShouldSaveContact)(void* userData, JPH_BodyID body1, JPH_BodyID body2);
+    bool(JPH_API_CALL* ShouldRestoreContact)(void* userData, JPH_BodyID body1, JPH_BodyID body2);
+} JPH_StateRecorderFilter_Procs;
+
+JPH_CAPI void JPH_StateRecorderFilter_SetProcs(const JPH_StateRecorderFilter_Procs* procs);
+JPH_CAPI JPH_StateRecorderFilter* JPH_StateRecorderFilter_Create(void* userData);
+JPH_CAPI void JPH_StateRecorderFilter_Destroy(JPH_StateRecorderFilter* filter);
+
+/* JPH_StateRecorder */
+typedef struct JPH_StateRecorder_Procs {
+    void(JPH_API_CALL* WriteBytes)(void* userData, const void* data, uint32_t size);
+    void(JPH_API_CALL* ReadBytes)(void* userData, void* data, uint32_t size);
+    bool(JPH_API_CALL* IsEOF)(void* userData);
+    bool(JPH_API_CALL* IsFailed)(void* userData);
+} JPH_StateRecorder_Procs;
+
+JPH_CAPI void JPH_StateRecorder_SetProcs(const JPH_StateRecorder_Procs* procs);
+JPH_CAPI JPH_StateRecorder* JPH_StateRecorder_Create(void* userData);
+JPH_CAPI void JPH_StateRecorder_Destroy(JPH_StateRecorder* recorder);
+JPH_CAPI bool JPH_StateRecorder_IsEOF(const JPH_StateRecorder* recorder);
 
 /* ContactManifold */
 JPH_CAPI void JPH_ContactManifold_GetWorldSpaceNormal(const JPH_ContactManifold* manifold, JPH_Vec3* result);
